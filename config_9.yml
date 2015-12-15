@@ -22,7 +22,7 @@ image_series:
   omega:
     start: 0.0
     step: 0.1
-    stop: 360.0
+    stop: 24.0
   dark: /media/DIFFRACTION/CHESS/2015/51NiTiSC_RAMS2TC_0Deg_1/10/ff/ff_01106.ge2
   flip: ~ # ~, v, h, hv, vh, cw, ccw
 
@@ -84,7 +84,7 @@ fit_grains:
 
   panel_buffer: 10 # don't fit spots within this many pixels from edge
 
-  threshold: 10
+  threshold: 50
 
   tolerance:
     tth: [0.2, 0.1] # tolerance lists must be identical length

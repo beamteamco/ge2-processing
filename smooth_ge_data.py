@@ -34,14 +34,12 @@ if __name__ == '__main__':
     # cfg is a list. We only need the first cfg data.
     cfg = cfg[0]
 
-    gepp = GEPreProcessor(cfg=cfg, logger=logger, gauss_sigma=3, min_blob_size=1000)
+    gepp = GEPreProcessor(cfg=cfg, logger=logger, gauss_sigma=3, min_blob_size=10)
 
     logger.info('=== begin image-smoothing ===')
 
     gepp.load_data()
 #    gepp.smooth_data()
-#    gepp.find_blobs()
-#    gepp.find_local_maxima()
+    gepp.find_blobs()
+    gepp.find_local_maxima()
 
-    # ge_data = load_data(cfg)
-    # smooth_data(cfg, ge_data)

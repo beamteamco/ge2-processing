@@ -14,7 +14,7 @@ material:
 image_series:
   file:
     stem: /media/DIFFRACTION/CHESS/2015/51NiTiSC_RAMS2TC_0Deg_1/9/ff/ff_%05d.ge2 # can include relative or absolute path
-    ids: [1091] # or can use globs: ["*2[4-9]"]
+    ids: [1091, 1092] # or can use globs: ["*2[4-9]"]
   images:
     start: 1
     stop: 240

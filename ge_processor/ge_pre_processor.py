@@ -22,9 +22,11 @@ with warnings.catch_warnings():
 # hexrd helpers to read a config file and load GE2 data
 from hexrd import config
 from hexrd.coreutil import initialize_experiment
-# For image analysis that is out of league for scipy
+# Image analysis that is out of league for scipy
 from skimage.morphology import watershed
 from skimage.feature import peak_local_max
+# Clustering stuff
+from sklearn.cluster import DBSCAN
 # Parallelization for spped
 from joblib import Parallel, delayed
 import multiprocessing
@@ -32,10 +34,13 @@ from random import randint
 
 # Helper to save a 2D array as an image (thanks Branden Kappes @ mines.edu)
 def write_image(filename, arr, pts=None, minsize=None, **kwds):
-
+    '''
+    Write a 2D array to a PNG image file. Optionally superimpose
+    points that are described in terms of their x, y coordinates.
+    '''
     xsize, ysize = 1024, 1024
 
-    fig = plt.figure(figsize=(10, 10), dpi=120)
+    fig = plt.figure(figsize=(100, 100), dpi=120)
     # plot the image
     ax = fig.gca()
     kwds['interpolation'] = kwds.get('interpolation', 'none')
@@ -46,45 +51,47 @@ def write_image(filename, arr, pts=None, minsize=None, **kwds):
     # plot any points
     if pts is not None:
         pts = np.asarray(pts)
-        ax.plot(pts[:,1], pts[:,0], 'go', markersize=3)
+        ax.plot(pts[:,1], pts[:,0], 'go', markersize=6)
         # resize (since adding points often adds padding)
-        #ax.set_xlim(0, 2048)
-        #ax.set_ylim(0, 2048)
+        ax.set_xlim(0, 2048)
+        ax.set_ylim(0, 2048)
     fig.savefig(filename, bbox_inches='tight', pad_inches=1./3.)
     fig.clf()
     plt.close()
 #--
-def find_blobs_mp(ge_data, int_scale_factor, min_size, cfg):
-#    logger.info("detecting connected components")
-    # Get a binary mask for connected-component detection (1 = our blobs)
-    # ge_mask = ge_data_smooth > cfg.fit_grains.threshold
-    print 'Starting find_blobs_mp'
-    #ge_mask = ge_data > (int_scale_factor * cfg.fit_grains.threshold)
-    ge_mask = ge_data
-    # Dilate the mask to merge any small spots
-    ge_mask = ndimage.binary_dilation(ge_mask, ndimage.generate_binary_structure(3, 3))
-    # Label each connected component (spot)
-    label_ge, number_of_labels = ndimage.label(ge_mask)
-    print "Past lebeling", number_of_labels
-#    logger.info("found %d connected components", number_of_labels)
-    ge_labeled = np.amax(label_ge, 0)
-    write_image('slice_labeled_' + str(randint(0, 1000000)) + '.png', ge_labeled, vmin=0)
-    # Get size of each blob by counting number of pixels with the same label
-    blob_sizes = ndimage.sum(ge_mask, label_ge, range(1, number_of_labels + 1))
-    blob_labels = np.unique(label_ge)
-# Explicit iteration is horribly slow
-#blob_sizes = np.zeros(number_of_labels)
-#for x in np.nditer(label_ge):
-#	blob_sizes[x] += 1
-
-#blob_sizes = np.bincount(np.ravel(label_ge))
-    #blob_labels = np.arange(number_of_labels)
-    # Loop over all detected regions and filter based on size/aspect ratio
-    # Save filtered blob information in an array 'blobs' of GEBlob object
-#    logger.info("saving blobs larger than %d pixels", min_size)
-    print 'Starting blob analysis'
-    blobs = []
-    for label_num, blob_size in zip(blob_labels, blob_sizes):
+def write_ge2(filename, arr, nbytes_header=8192, pixel_type=np.uint16):
+    '''
+    Write a 3D array to a GE2 file.
+    '''
+    fid = open(filename, 'wb')
+    fid.seek(nbytes_header)
+    fid.write(arr.astype(pixel_type))
+    fid.close()
+#--
+def find_blobs_mp(ge_data, int_scale_factor, min_size, min_peak_separation, cfg):
+   '''
+   Multiprocessing worker subroutine for blob and local maxima finding.
+   First finds blobs using a connected component type algorithm. Then
+   finds the local maxima (spots). Then calculates the area corresponding to 
+   each of the spots using the watershed algorithm.
+   '''
+   # Once again, remove noise
+   ge_mask = ge_data > (int_scale_factor * cfg.fit_grains.threshold)
+   # Dilate the mask to merge any small spots
+   ge_mask = ndimage.binary_dilation(ge_mask, ndimage.generate_binary_structure(3, 3))
+   # Label each connected component (spot)
+   label_ge, number_of_labels = ndimage.label(ge_mask)
+   ge_labeled = np.amax(label_ge, 1)
+   label_rand = str(randint(0, 1000000))
+   # Get size of each blob by counting number of pixels with the same label
+   blob_sizes = ndimage.sum(ge_mask, label_ge, range(1, number_of_labels + 1))
+   blob_labels = np.unique(label_ge)
+   # Loop over all detected regions and filter based on size/aspect ratio
+   # Save filtered blob information in an array 'blobs' of GEBlob object
+   blobs = []
+   blob_centroids = []
+   max_points_global = []
+   for label_num, blob_size in zip(blob_labels, blob_sizes):
         # Label 0 is for the whole image background. Do not want.
         if label_num == 0:
             continue
@@ -92,67 +99,49 @@ def find_blobs_mp(ge_data, int_scale_factor, min_size, cfg):
         if blob_size < min_size:
             continue
         # Get the minimal region of interest (ROI) for the blob
-        print 'Starting with a spot'
         slice_x, slice_y, slice_z = ndimage.find_objects(label_ge==label_num)[0]
-        print 'Finished one spot (almost)'
         bbox = [slice_x.stop -  slice_x.start, slice_y.stop -  slice_y.start, slice_z.stop -  slice_z.start]
         # Is any of roi bounding box dim < min? Move on
         if(min(bbox) < (min_size ** (1.0/3.0))):
             print 'Finished one spot but its small'
             continue
-        print 'Yay finished one spot'
+        #print 'Yay finished one spot'
+        print 'Finished processing a blob with bbox', bbox
+        blob_centroids.append([(slice_x.stop + slice_x.start)/2.0, (slice_y.stop + slice_y.start)/2.0, (slice_z.stop + slice_z.start)/2.0])
+        #
+        # Now run local maxima finding and then watershed
+        roi = ge_data[slice_x, slice_y, slice_z]
+        roi_original = ge_data[slice_x, slice_y, slice_z]
+
+        markers = np.zeros_like(roi)
+        # Find local maxima
+        max_points = peak_local_max(roi, min_distance=(min_peak_separation),
+                                    threshold_rel=0.05, exclude_border=False, indices=False)
+        max_points[roi < int_scale_factor*cfg.fit_grains.threshold] = 0
+        max_points = np.nonzero(max_points)
+        #
+        for max_x, max_y, max_z, max_id in zip(max_points[0], max_points[1], max_points[2],
+                                               range(len(max_points[0]))):
+           markers[max_x][max_y][max_z] = max_id+1
+           # Store global x, y, z for the maxima and the intensity
+           max_points_global.append([max_x + slice_x.start, max_y + slice_y.start, max_z + slice_z.start, roi[max_x][max_y][max_z]])
+        # Run watershed now
+        labels = watershed(-roi, markers, mask=(roi>0.1*np.amax(roi)))
+        # Done watershed
         # This looks like a legit spot. Add to blobs array
-        blobs.append(GEBlob(slice_x, slice_y, slice_z, label_num, blob_size))
+        blobs.append(GEBlob(slice_x, slice_y, slice_z, label_num, blob_size, max_points))
 
-    ge_labeled = np.amax(label_ge, 0)
+   ge_labeled = np.amax(label_ge, 0)
 
-    print 'MP total blobs: ', len(blobs)
+   print "Done blobs MP"
 
-    return {'blobs': blobs, 'label_ge': label_ge}
-
-    #write_image('slice_labeled_cleaned.png', ge_labeled, vmin=0)
-#    logger.info("after cleaning, %d connected components", len(blobs))
+   return {'blobs': blobs, 'label_ge': label_ge, 'blob_centroids': blob_centroids, 'local_maxima': max_points_global}
 #--
-def get_local_maxima(blob, ge_data, min_peak_separation, cfg, int_scale_factor):
-    slice_x, slice_y, slice_z = blob.slice_x, blob.slice_y, blob.slice_z
-    label_num = blob.blob_label
-    roi = ge_data[slice_x, slice_y, slice_z]
-    roi_original = ge_data[slice_x, slice_y, slice_z]
-    #write_image('roi' + str(label_num) + '.png', np.amax(roi, 0), vmin=0)
-#         pickle.dump(roi, open('roi' + str(label_num) + '.cpl', 'wb'))
 
-    markers = np.zeros_like(roi)
-    print 'Blob label:', blob.blob_label, ', blob size:', blob.blob_size
-
-    max_points = peak_local_max(roi, min_distance=(min_peak_separation/2.0),
-                                threshold_rel=0.2, exclude_border=False, indices=False)
-    #max_points[roi < int_scale_factor*cfg.fit_grains.threshold] = 0
-    max_points = np.nonzero(max_points)
-    for max_x, max_y, max_z, max_id in zip(max_points[0], max_points[1], max_points[2],
-                                           range(len(max_points[0]))):
-       print '\t', max_x, max_y, max_z, roi[max_x][max_y][max_z]
-       markers[max_x][max_y][max_z] = max_id+1
-
-    labels = watershed(-roi, markers, mask=(roi>0.1*np.amax(roi)))
-
-    print np.amax(labels)
-
-    directory = 'stack_' + str(label_num) + str(randint(0, 1000000))
-    if not os.path.exists(directory):
-       os.makedirs(directory)
-
-    for i in range(np.shape(labels)[0]):
-       write_image(directory + '/layer_' + str(i) + '_watershed.png', labels[i, :, :],
-                   vmin=0, vmax=np.amax(labels))
-       write_image(directory + '/layer_' + str(i) + '_roi.png', roi[i, :, :],
-                   vmin=0, vmax=np.amax(roi))
-
-    return max_points
-#--
 # A blob is a set of pixels in an image that are connected to each other
 class GEBlob:
     def __init__(self, slice_x, slice_y, slice_z,
-                 blob_label, blob_size):
+                 blob_label, blob_size, max_points):
        # slice_* defines the bounding box of a blob in the GE2 data
        self.slice_x    = slice_x
        self.slice_y    = slice_y
@@ -161,6 +150,11 @@ class GEBlob:
        self.blob_label = blob_label
        # Number of pixels
        self.blob_size  = blob_size
+       # Local maxima in the blob ([[x], [y], [z]])
+       # xyz for the local maxima are w.r.t to the blob
+       # To get global xyz for the maxima, add slice_x.start
+       # etc. to the xyz
+       self.max_points = max_points
 #--
 # An object for all the GE2 pre-processing routines
 class GEPreProcessor:
@@ -184,10 +178,10 @@ class GEPreProcessor:
     def __init__(self, cfg, logger,
                  gauss_sigma=3,
                  min_blob_size=125,
-                 min_peak_separation=6):
+                 min_peak_separation=4):
     	self.cfg                 = cfg                      # An open hexrd config file object
         self.logger              = logger                   # An open logger object
-    	self.gauss_sigma         = gauss_sigma              # Sigma for Gauss smoothing operator
+    	self.gauss_sigma         = gauss_sigma              # Sigma for Gauss smoothing operator (obsolete)
     	self.ge_data             = []                       # GE2 image data
     	self.ge_smooth_data      = []                       # Above + smoothed using Gauss
         self.ge_labeled_data     = []                       # Above + connected components labeled
@@ -197,6 +191,7 @@ class GEPreProcessor:
         self.min_peak_separation = min_peak_separation      # Minimum separation in the local maxima (user input)
         self.blobs               = []                       # An array of blob objects
 	self.max_points          = []                       # An array of local maxima coordinates in the blobs
+        self.omega_start         = []                       # In the parallelized frame data, start omega number for each portion
 
         return
     #--
@@ -207,132 +202,129 @@ class GEPreProcessor:
         '''
         cfg          = self.cfg
         logger       = self.logger
-        twotheta_bin = 0.02
-        eta_bin      = 0.2
+        omega_start  = self.omega_start
+
         # process the data
         pd, reader, detector = initialize_experiment(cfg)
         n_frames = reader.getNFrames()
         logger.info("reading %d frames of data, storing values > %.1f",
                     n_frames, cfg.fit_grains.threshold)
+        # Loop over all frames and save them in a 3D array
         frame_list = []
-
-        xy_indices = np.indices((2048, 2048))
-        tte_indices = detector.xyoToAng(xy_indices[0], xy_indices[1], np.zeros_like(xy_indices[0]))
-        tte_indices[0] = np.round((tte_indices[0] - np.amin(tte_indices[0]))/twotheta_bin*180.0/np.pi).astype(int)
-        tte_indices[1] = np.round((tte_indices[1] - np.amin(tte_indices[1]))/eta_bin*180.0/np.pi).astype(int)
-
-        ge_data_ang = np.zeros([n_frames, (np.amax(tte_indices[0]) - np.amin(tte_indices[0]) + 1), (np.amax(tte_indices[1]) - np.amin(tte_indices[1]) + 1)])
-
         for i in range(n_frames):
             frame = reader.read()
             omega = reader.getFrameOmega()
-#            frame_list.append(frame)
-            ge_data_ang[i, tte_indices[0][...], tte_indices[1][...]] = frame[xy_indices[0][...], xy_indices[1][...]]
+            frame_list.append(frame)
+        # Turn the frame array into a Numpy array
+        frame_list = np.array(frame_list)
+        # Remove low intensity noise
+        frame_list[frame_list < cfg.fit_grains.threshold] = 0
+        # Scale the intensity to 16k
+        int_scale_factor = float(2**14)/float(np.amax(frame_list))
+        frame_list = frame_list*int_scale_factor
+        # Flatten along omega and write the frame array to an image
+        write_image('slice.png', np.amax(frame_list, axis=0), vmin=0)
+        # Split the frame array into chunks for multiprocessing
+        num_cores = multiprocessing.cpu_count()
+        frame_list_split = np.array_split(frame_list, num_cores, axis=0)
+        ge_data_ang_red = ()
+        omega_start.append(0)
+        for array_piece in frame_list_split:
+           ge_data_ang_red = ge_data_ang_red + (array_piece,)
+           omega_start.append(np.shape(array_piece)[0])
 
-	twotheta_range = np.round((pd.getTThRanges() - np.amin(tte_indices[0]))/twotheta_bin*180.0/np.pi)
+        omega_start.pop()
+        omega_start = np.cumsum(omega_start)
 
-	ge_data_ang[ge_data_ang < cfg.fit_grains.threshold] = 0
-	int_scale_factor = float(2**14)/float(np.amax(ge_data_ang))
-	ge_data_ang = ge_data_ang*int_scale_factor
-
-	write_image('slice.png', np.amax(ge_data_ang, 0), vmin=0)
-
-	ge_data_ang_red = []
-	for tt_min, tt_max in twotheta_range:
-		tt_mean = (tt_max + tt_min)/2.0
-		tt_width = (tt_max - tt_min)
-		tt_min_relaxed = tt_mean - 5 * tt_width
-		tt_max_relaxed = tt_mean + 5 * tt_width
-		ge_data_ang_red.append(ge_data_ang[:, tt_min_relaxed:tt_max_relaxed, :])
-                write_image('slice_' + str(tt_min) + '.png', np.amax(ge_data_ang[:, tt_min_relaxed:tt_max_relaxed, :], 0), vmin=0)
-
-	logger.info("toc")
-#        frame_list = np.array(frame_list)
-#        frame_list[frame_list < cfg.fit_grains.threshold] = 0
-#        int_scale_factor = float(2**14)/float(np.amax(frame_list))
-#        frame_list = frame_list*int_scale_factor
-#        write_image('slice.png', frame_list[100, 100:400, 1350:1650], vmin=0)
-
-#        self.ge_data          = frame_list
-        self.ge_data          = ge_data_ang
-#        self.ge_data_ang      = ge_data_ang
+        self.ge_data          = frame_list
         self.int_scale_factor = int_scale_factor
-	self.twotheta_range = twotheta_range
-	self.ge_data_ang_red = ge_data_ang_red
+	self.ge_data_ang_red  = ge_data_ang_red
+        self.omega_start      = omega_start
+        self.input_data_shape = np.shape(frame_list)
 
         return frame_list
-    #--
-
-    def smooth_data(self):
-        '''
-            Apply a Gaussian kernel to smooth data.
-            This seems necessary because otherwise,
-            the connected component detection later
-            would detect many tiny spots. I prefer
-            detecting larger regions that then can
-            be split into subspots (= subgrains)
-            using local maxima finding.
-        '''
-        cfg         = self.cfg
-        logger      = self.logger
-        ge_data     = self.ge_data
-        gauss_sigma = self.gauss_sigma
-        use_multiproc = False
-
-        logger.info("smoothing data with a Gaussian filter of sigma = %d", gauss_sigma)
-
-	if use_multiproc:
-        	num_cores = multiprocessing.cpu_count()
-        	ge_data_split = np.array_split(ge_data, num_cores, 0)
-        	logger.info("finished splitting the data for multiproc")
-
-#        	ge_data_split_smooth = Parallel(n_jobs=4, verbose=50)(delayed(ndimage.filters.gaussian_filter(ge_data_split_region, gauss_sigma, truncate=2)) for ge_data_split_region in ge_data_split)
-        	ge_data_split_smooth = Parallel(n_jobs=4, verbose=50)(
-			delayed(gaussian_filter(ge_data_split[i], gauss_sigma, truncate=2))
-			for i in range(len(ge_data_split)))
-
-        	logger.info("smoothed using multiproc")
-        	ge_data_smooth = np.stack(ge_data_split_smooth)
-	else:
-	        ge_data_smooth = ndimage.filters.gaussian_filter(ge_data,
-	                                                         gauss_sigma,
-	                                                         truncate=2)
-
-        write_image('slice_smooth.png', ge_data[100, 100:400, 1350:1650], vmin=0)
-
-        self.ge_smooth_data = ge_data_smooth
-
-        return ge_data_smooth
     #--
     def find_blobs(self):
         '''
             Find connected componnets (spots)
         '''
-        min_size       = self.min_blob_size
-        ge_data_smooth = self.ge_smooth_data
-        cfg            = self.cfg
-        logger         = self.logger
-        int_scale_factor = self.int_scale_factor
-        ge_data_ang_red = self.ge_data_ang_red
+        min_size            = self.min_blob_size
+        ge_data_smooth      = self.ge_smooth_data
+        cfg                 = self.cfg
+        logger              = self.logger
+        int_scale_factor    = self.int_scale_factor
+        ge_data_ang_red     = self.ge_data_ang_red
+        min_peak_separation = self.min_peak_separation
+        omega_start         = self.omega_start
 
         num_cores = multiprocessing.cpu_count()
-        blobs_mp_output = Parallel(n_jobs=num_cores, verbose=5)(delayed(find_blobs_mp)(ge_data, int_scale_factor, min_size, cfg) for ge_data in ge_data_ang_red)
+        blobs_mp_output = Parallel(n_jobs=num_cores, verbose=5, max_nbytes=1e6)(delayed(find_blobs_mp)(ge_data, int_scale_factor, min_size, min_peak_separation, cfg) for ge_data in ge_data_ang_red)
 
         blobs = []
         label_ge = []
-        for blobs_mp_output_i in blobs_mp_output:
+        blob_centroids_oxy = []
+        #local_maxima_xy = []
+        local_maxima_oxy = []
+        local_maxima_oxyi = []
+        for blobs_mp_output_i, omega_start_i in zip(blobs_mp_output, omega_start):
            for blob_i in blobs_mp_output_i['blobs']:
               blobs.append(blob_i)
+           #
+           for maxima_o, maxima_x, maxima_y, max_intensity in blobs_mp_output_i['local_maxima']:
+              if max_intensity > (0.05*float(2**14)):
+                 #local_maxima_xy.append([maxima_x, maxima_y])
+                 local_maxima_oxyi.append([maxima_o + omega_start_i, maxima_x, maxima_y, max_intensity])
+                 local_maxima_oxy.append([maxima_o + omega_start_i, maxima_x, maxima_y])
+           #
            label_ge.append(blobs_mp_output_i['label_ge'])
+           
+
+        # Cluster the local minima
+        local_maxima_oxy = np.array(local_maxima_oxy)
+        local_maxima_oxyi = np.array(local_maxima_oxyi)
+        db = DBSCAN(eps=2.5, min_samples=1).fit(local_maxima_oxy)
+        local_maxima_labels = db.labels_
+        #
+        o_sum = np.bincount(local_maxima_labels, weights=local_maxima_oxyi[:, 0])
+        x_sum = np.bincount(local_maxima_labels, weights=local_maxima_oxyi[:, 1])
+        y_sum = np.bincount(local_maxima_labels, weights=local_maxima_oxyi[:, 2])
+        i_sum = np.bincount(local_maxima_labels, weights=local_maxima_oxyi[:, 3])
+        l_sum = np.bincount(local_maxima_labels)
+        #
+        local_maxima_oxyi_clustered = zip(np.divide(o_sum, l_sum), np.divide(x_sum, l_sum), np.divide(y_sum, l_sum), np.divide(i_sum, l_sum))
+        local_maxima_xy = zip(np.divide(x_sum, l_sum), np.divide(y_sum, l_sum))
+
+        print 'Local maxima'
+        for l1, l2 in zip(local_maxima_labels, local_maxima_oxyi):
+           print l1, l2[0], l2[1], l2[2], l2[3]
+
+        blob_centroids = []
+        for blob in blobs:
+           if blob.blob_size > 125:
+              blob_centroids.append([(blob.slice_y.start + blob.slice_y.stop)/2.0, (blob.slice_z.start + blob.slice_z.stop)/2.0])
+              blob_centroids_oxy.append([(blob.slice_x.start + blob.slice_x.stop)/2.0, (blob.slice_y.start + blob.slice_y.stop)/2.0, (blob.slice_z.start + blob.slice_z.stop)/2.0])
+
+        self.blobs                       = blobs
+        self.blob_centroids_oxy          = blob_centroids_oxy
+        self.local_maxima_oxyi           = local_maxima_oxyi
+        self.local_maxima_oxyi_clustered = local_maxima_oxyi_clustered
+        self.local_maxima_clusters       = db
+
+        # Superimpose the centroids of blobs and the local maxima on the original data 
+        # and write to an image file.
+        write_image('slice_blob_centroids.png', np.amax(self.ge_data, axis=0), pts=blob_centroids)
+        write_image('slice_local_maxima.png', np.amax(self.ge_data, axis=0), pts=local_maxima_xy)
+
+        # Synthesize a GE2 file based on the IDed spots
+        frames_synth = np.zeros(self.input_data_shape)
+        for o, x, y, i in local_maxima_oxyi_clustered:
+           frames_synth[int(round(o)), int(round(x)), int(round(y))] = i
+
+        frames_synth = ndimage.morphology.grey_dilation(frames_synth, size=5)
+        write_ge2('synth_spots.ge2', frames_synth)
 
         print 'Total blobs: ', len(blobs)
-
-#        self.ge_labeled_data  = label_ge
-#        self.number_of_labels = number_of_labels
-#        self.blob_sizes       = blob_sizes
-        self.blobs            = blobs
-        pickle.dump(blobs, open('ge_blobs.cpl', 'wb'))
-
+        print 'Total local maxima: ', np.shape(local_maxima_oxyi)[0]
         return label_ge
     #--
 
@@ -341,7 +333,7 @@ class GEPreProcessor:
             Find local maxima in each of the detected blobs
         '''
         ge_labeled_data     = self.ge_labeled_data
-        ge_data             = self.ge_data
+        ge_data_ang_red     = self.ge_data_ang_red
         cfg                 = self.cfg
         logger              = self.logger
         int_scale_factor    = self.int_scale_factor
@@ -351,42 +343,13 @@ class GEPreProcessor:
 
         logger.info("Detecting local maxima")
 
-        #spot_max_points = []
-
         num_cores = multiprocessing.cpu_count()
-        spot_max_points = Parallel(n_jobs=num_cores, verbose=5)(delayed(get_local_maxima)(blob, ge_data, min_peak_separation, cfg, int_scale_factor) for blob in blobs)
+        spot_max_points = Parallel(n_jobs=num_cores, verbose=5)(delayed(get_local_maxima)(blob, ge_data, min_peak_separation, cfg, int_scale_factor) for blob, ge_data in zip(blobs, ge_data_ang_red))
 
-        print 'Max points:', len(spot_max_points)
+        for pt, layer_num in zip(spot_max_points, range(num_cores)):
+           for x, y, z in pt:
+              print layer_num, x, y, z
 
 	self.max_points = spot_max_points
+
         return blobs
-
-def old_max_points():
-        for blob in blobs:
-            slice_x, slice_y, slice_z = blob.slice_x, blob.slice_y, blob.slice_z
-            label_num = blob.blob_label
-            roi = ge_data[slice_x, slice_y, slice_z]
-	    roi_original = ge_data[slice_x, slice_y, slice_z]
-            write_image('roi' + str(label_num) + '.png', np.amax(roi, 0), vmin=0)
-	    pickle.dump(roi, open('roi' + str(label_num) + '.cpl', 'wb'))
-
-	    markers = np.zeros_like(roi)
-            print 'Blob label:', blob.blob_label, ', blob size:', blob.blob_size
-
-	    max_points = peak_local_max(roi, min_distance=min_peak_separation, threshold_rel=0.2, exclude_border=False, indices=False)
-            max_points[roi < int_scale_factor*cfg.fit_grains.threshold] = 0
-	    max_points = np.nonzero(max_points)
-            for max_x, max_y, max_z, max_id in zip(max_points[0], max_points[1], max_points[2], range(len(max_points[0]))):
-                print '\t', max_x, max_y, max_z, roi[max_x][max_y][max_z]
-                markers[max_x][max_y][max_z] = max_id+1
-
-            labels = watershed(-roi, markers, mask=(roi>0.1*np.amax(roi)))
-	    spot_max_points.append(max_points)
-
-            directory = 'stack_' + str(label_num)
-            if not os.path.exists(directory):
-                os.makedirs(directory)
-
-            for i in range(np.shape(labels)[0]):
-                write_image(directory + '/layer_' + str(i) + '_watershed.png', labels[i, :, :], vmin=0, vmax=np.amax(labels))
-                write_image(directory + '/layer_' + str(i) + '_roi.png', roi[i, :, :], vmin=0, vmax=np.amax(roi))

@@ -8,7 +8,7 @@ import warnings
 import yaml
 
 from hexrd import config
-from ge_processor.ge_pre_processor import *
+from ge_processor.ge_pre_processor2 import *
 
 if __name__ == '__main__':
     # Read args
@@ -41,5 +41,5 @@ if __name__ == '__main__':
     gepp.load_data()
 #    gepp.smooth_data()
     gepp.find_blobs()
-    gepp.find_local_maxima()
+#    gepp.find_local_maxima()
 

@@ -103,10 +103,10 @@ def find_blobs_mp(ge_data, int_scale_factor, min_size, min_peak_separation, cfg)
         bbox = [slice_x.stop -  slice_x.start, slice_y.stop -  slice_y.start, slice_z.stop -  slice_z.start]
         # Is any of roi bounding box dim < min? Move on
         if(min(bbox) < (min_size ** (1.0/3.0))):
-            print 'Finished one spot but its small'
+            #print 'Finished one spot but its small'
             continue
         #print 'Yay finished one spot'
-        print 'Finished processing a blob with bbox', bbox
+        #print 'Finished processing a blob with bbox', bbox
         blob_centroids.append([(slice_x.stop + slice_x.start)/2.0, (slice_y.stop + slice_y.start)/2.0, (slice_z.stop + slice_z.start)/2.0])
         #
         # Now run local maxima finding and then watershed
@@ -213,7 +213,7 @@ class GEPreProcessor:
         frame_list = []
         for i in range(n_frames):
             frame = reader.read()
-            omega = reader.getFrameOmega()
+            #omega = reader.getFrameOmega()
             frame_list.append(frame)
         # Turn the frame array into a Numpy array
         frame_list = np.array(frame_list)

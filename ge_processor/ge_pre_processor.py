@@ -330,7 +330,7 @@ class GEPreProcessor:
         for o, x, y, i in local_maxima_oxyi_clustered:
            frames_synth[int(round(o)), int(round(x)), int(round(y))] = i
 
-        frames_synth = ndimage.morphology.grey_dilation(frames_synth, size=5)
+        frames_synth = ndimage.morphology.grey_dilation(frames_synth, size=2)
         write_ge2('synth_spots.ge2', frames_synth)
 
         #print 'Total blobs: ', len(blobs)

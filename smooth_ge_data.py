@@ -8,7 +8,7 @@ import warnings
 import yaml
 
 from hexrd import config
-from ge_processor.ge_pre_processor2 import *
+from ge_processor.ge_pre_processor import *
 
 if __name__ == '__main__':
     # Read args
@@ -21,6 +21,7 @@ if __name__ == '__main__':
     else:
         cfg_file = sys.argv[1]
 
+    # Setup logger
     log_level = logging.DEBUG
     logger = logging.getLogger('hexrd')
     logger.setLevel(log_level)
@@ -33,13 +34,12 @@ if __name__ == '__main__':
     cfg = config.open(cfg_file)
     # cfg is a list. We only need the first cfg data.
     cfg = cfg[0]
-
-    gepp = GEPreProcessor(cfg=cfg, logger=logger, gauss_sigma=3, min_blob_size=10)
-
+    # Initialize the GE pre-processor
+    gepp = GEPreProcessor(cfg=cfg, logger=logger, min_blob_size=10)
+    # Start analysis
     logger.info('=== begin image-smoothing ===')
-
+    # Load the GE2 data
     gepp.load_data()
-#    gepp.smooth_data()
+    # ID blobs and the local maxima
     gepp.find_blobs()
-#    gepp.find_local_maxima()
 

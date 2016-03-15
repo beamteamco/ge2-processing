@@ -316,13 +316,19 @@ class GEPreProcessor:
         	write_image('slice_local_maxima.png', np.amax(self.ge_data, axis=0), pts=local_maxima_xy)
 
         if(cfg.get('pre_processing')['print_spots_info']):
+	   f = open('pre_processing_spots.data', 'w+')
            # Because I want to pretty print columns
            template = "{0:>12}{1:>12}{2:>12}{3:>12}"
+           template_file = "{0:>12}{1:>12}{2:>12}{3:>12}\n"
            print template.format("Omega", "X", "Y", "Intensity")
+	   f.write(template_file.format("Omega", "X", "Y", "Intensity"))
 
            template = "{0:12.2f}{1:12.2f}{2:12.2f}{3:12.3f}"
            for o, x, y, i in local_maxima_oxyi_clustered:
               print template.format(o, x, y, i)
+	      f.write(template_file.format(o, x, y, i))
+
+	   f.close()
 
         if cfg.get('pre_processing')['print_ge']:
            logger.info("Writing GE2 files")

@@ -1,4 +1,4 @@
-analysis_name: 51NiTiSC_RAMS2TC_0Deg_1_9 # defaults to analysis
+analysis_name: 50NiTiSC_0D_1_mono_98_redo_thresh1 # defaults to analysis
 
 ## working directory defaults to current working directory
 ## all relative paths specified herein are assumed to be in the working_dir
@@ -9,13 +9,12 @@ multiprocessing: -1 # "all", or "half", or -1 means all but one, defaults to -1
 
 material:
   definitions: material_niti
-  active: NiTi_cubic
+  active: NiTi_mono
 
 image_series:
   file:
-    stem: /media/DIFFRACTION/CHESS/2015/51NiTiSC_RAMS2TC_0Deg_1/9/ff/ff_%05d.ge2 # can include relative or absolute path
-    ##ids: [1091, 1092, 1093, 1094, 1095, 1096, 1097, 1098, 1099, 1100, 1101, 1102, 1103, 1104, 1105] # or can use globs: ["*2[4-9]"]
-    ids: [1091, 1092]
+    stem: /media/DIFFRACTION/CHESS/2015_Dec/50NiTiSC_0D_1/98/ff/ff_%05d.ge2 # can include relative or absolute path
+    ids: [845, 846, 847, 848, 849, 850, 851, 852, 853, 854, 855, 856, 857, 858, 859] # or can use globs: ["*2[4-9]"]
   images:
     start: 1
     stop: 3600
@@ -24,13 +23,13 @@ image_series:
     start: 0.0
     step: 0.1
     stop: 360.0
-  dark: /media/DIFFRACTION/CHESS/2015/51NiTiSC_RAMS2TC_0Deg_1/10/ff/ff_01106.ge2
+  dark: /media/DIFFRACTION/CHESS/2015_Dec/50NiTiSC_0D_1/99/ff/ff_00860.ge2
   flip: h # ~, v, h, hv, vh, cw, ccw
 
 instrument:
-  parameters: detector_55p6kev_chess_2015_dec.yml
+  parameters: ge_detector.yml
   detector: # this section is only needed to convert old files to the new spec
-    parameters_old: detector_61p332_CHESS_15_june_APS_cal_refined # the old detector spec, produced by the GUI
+    parameters_old: detector_55p618_avg_CHESS_15_dec_APS_cal # the old detector spec, produced by the GUI
     pixels: # this section required to convert from old detector spec
       rows: 2048
       columns: 2048
@@ -42,6 +41,7 @@ pre_processing:
   min_peak_separation: 5   # Minimum separation between local maxima
   print_spots_info: true   # Print omega, x, y and intensity for the local maxima found
   print_ge: false          # If true, GE2 files will be written to disk (pretty slow for now)
+  print_diag_images: false # Print diagnosti PNGs with local maxima overlaid on intensity etc
   radius_gray_dilation: 2  # When writing GE2 files, spot will be dilated by these pixels
 
 find_orientations:
@@ -49,24 +49,24 @@ find_orientations:
     # A file name must be specified. If it doesn't exist, one will be created
     file: eta-omega.cpl
 
-    threshold: 10
-    bin_frames: 1 # defaults to 1
+    threshold: 15
+    #bin_frames: 1 # defaults to 1
 
     ## "all", or a list of hkl orders used to find orientations
     ## defaults to all orders listed in the material definition
-    active_hkls: all
+    active_hkls: [0,1,2]
 
   ## either search full quaternian grid, or seed search based on sparse
   ## orientation maps
   #use_quaternian_grid: some/file/name # defaults to seeded search
   seed_search: # this section is ignored if use_quaternian_grid is defined
-    hkl_seeds: [0,1,2] # hkls ids to use, must be defined for seeded search
-    fiber_step: 0.25 # degrees, defaults to ome tolerance
+    hkl_seeds: [0,1] # hkls ids to use, must be defined for seeded search
+    fiber_step: 0.5 # degrees, defaults to ome tolerance
 
-  threshold: 10 # defaults to 1
+  threshold: 1
 
   omega:
-    tolerance: 0.2 # in degrees, defaults to 2x ome step
+    tolerance: 0.5 # in degrees, defaults to 2x ome step
 
   ## specify the branch cut, in degrees. The range must be 360 degrees.
   ## defaults to ["image_series:omega:start", "image_series:omega:start"+-360]
@@ -74,12 +74,12 @@ find_orientations:
   period: [0.0, 360.0] # in degrees, defaults to full 360 starting at "ome start"
 
   eta:
-    tolerance: 0.2 # in degrees, defaults to 2x ome step
+    tolerance: 0.5 # in degrees, defaults to 2x ome step
     mask: 5 # degrees, mask angles close to ome rotation axis, defaults to 5
 
   clustering:
-    radius: 0.25
-    completeness: 0.6 # completeness threshold
+    radius: 0.5
+    completeness: 0.8 # completeness threshold
     algorithm: fclusterdata # defaults to dbscan
 
   #extract_measured_g_vectors: true # defaults to false
@@ -93,12 +93,11 @@ fit_grains:
 
   panel_buffer: 10 # don't fit spots within this many pixels from edge
 
-  threshold: 50
+  threshold: 15
 
   tolerance:
-    tth: [0.2, 0.2] # tolerance lists must be identical length
-    eta: [1.0, 1.0]
-    omega: [1.0, 1.0]
+    tth: [0.1, 0.1] # tolerance lists must be identical length
+    eta: [2.0, 2.0]
+    omega: [2.0, 2.0]
 
-  tth_max: false # true, false, or a non-negative value, defaults to true
-
+  tth_max: 15 # true, false, or a non-negative value, defaults to true

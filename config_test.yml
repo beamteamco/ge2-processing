@@ -14,8 +14,7 @@ material:
 image_series:
   file:
     stem: /media/DIFFRACTION/CHESS/2015/51NiTiSC_RAMS2TC_0Deg_1/9/ff/ff_%05d.ge2 # can include relative or absolute path
-    ##ids: [1091, 1092, 1093, 1094, 1095, 1096, 1097, 1098, 1099, 1100, 1101, 1102, 1103, 1104, 1105] # or can use globs: ["*2[4-9]"]
-    ids: [1091, 1092]
+    ids: [1091, 1092, 1093, 1094, 1095, 1096, 1097, 1098, 1099, 1100, 1101, 1102, 1103, 1104, 1105] # or can use globs: ["*2[4-9]"]
   images:
     start: 1
     stop: 3600
@@ -38,9 +37,7 @@ instrument:
 
 pre_processing:
   ge_reader_threshold: 50  # Anything less than this will be set to zero on reading GE2 file
-  min_blob_size: 125       # Blob containing less than these pixels will be discarded
-  min_peak_separation: 5   # Minimum separation between local maxima
-  print_spots_info: true   # Print omega, x, y and intensity for the local maxima found
+  min_blob_size: 10        # Blob containing less than these pixels will be discarded
   print_ge: false          # If true, GE2 files will be written to disk (pretty slow for now)
   radius_gray_dilation: 2  # When writing GE2 files, spot will be dilated by these pixels
 

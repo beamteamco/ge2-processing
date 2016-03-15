@@ -40,7 +40,7 @@ def write_image(filename, arr, pts=None, minsize=None, **kwds):
     '''
     xsize, ysize = 1024, 1024
 
-    fig = plt.figure(figsize=(100, 100), dpi=120)
+    fig = plt.figure(figsize=(20, 20), dpi=120)
     # plot the image
     ax = fig.gca()
     kwds['interpolation'] = kwds.get('interpolation', 'none')
@@ -133,8 +133,6 @@ def find_blobs_mp(ge_data, int_scale_factor, min_size, min_peak_separation, cfg)
 
    ge_labeled = np.amax(label_ge, 0)
 
-   print "Done blobs MP"
-
    return {'blobs': blobs, 'label_ge': label_ge, 'blob_centroids': blob_centroids, 'local_maxima': max_points_global}
 #--
 
@@ -175,20 +173,16 @@ class GEPreProcessor:
         blobs = An array of GEBlob (information about blobs)
     '''
 
-    def __init__(self, cfg, logger,
-                 gauss_sigma=3,
-                 min_blob_size=125,
-                 min_peak_separation=4):
+    def __init__(self, cfg, logger):
     	self.cfg                 = cfg                      # An open hexrd config file object
         self.logger              = logger                   # An open logger object
-    	self.gauss_sigma         = gauss_sigma              # Sigma for Gauss smoothing operator (obsolete)
     	self.ge_data             = []                       # GE2 image data
     	self.ge_smooth_data      = []                       # Above + smoothed using Gauss
         self.ge_labeled_data     = []                       # Above + connected components labeled
         self.number_of_labels    = 0                        # number of labels = number of blobs in the data
-        self.min_blob_size       = min_blob_size            # Blobs smaller than this are removed (user input)
+        self.min_blob_size       = cfg.get('pre_processing')['min_blob_size'] # Blobs smaller than this are removed (user input)
         self.int_scale_factor    = 1                        # A scale factor for intensity (auto-calculated)
-        self.min_peak_separation = min_peak_separation      # Minimum separation in the local maxima (user input)
+        self.min_peak_separation = cfg.get('pre_processing')['min_peak_separation'] # Minimum separation in the local maxima (user input)
         self.blobs               = []                       # An array of blob objects
 	self.max_points          = []                       # An array of local maxima coordinates in the blobs
         self.omega_start         = []                       # In the parallelized frame data, start omega number for each portion
@@ -208,7 +202,7 @@ class GEPreProcessor:
         pd, reader, detector = initialize_experiment(cfg)
         n_frames = reader.getNFrames()
         logger.info("Reading %d frames of data, storing values > %.1f",
-                    n_frames, cfg.fit_grains.threshold)
+                    n_frames, cfg.get('pre_processing')['ge_reader_threshold'])
         # Loop over all frames and save them in a 3D array
         frame_list = []
         for i in range(n_frames):
@@ -218,14 +212,15 @@ class GEPreProcessor:
         # Turn the frame array into a Numpy array
         frame_list = np.array(frame_list)
         # Remove low intensity noise
-        frame_list[frame_list < cfg.fit_grains.threshold] = 0
+        frame_list[frame_list < cfg.get('pre_processing')['ge_reader_threshold']] = 0
         # Scale the intensity to 16k
         int_scale_factor = float(2**14)/float(np.amax(frame_list))
         frame_list = frame_list*int_scale_factor
-        # Flatten along omega and write the frame array to an image
-        write_image('slice.png', np.amax(frame_list, axis=0), vmin=0)
+        if cfg.get('pre_processing')['print_diag_images']:
+        	# Flatten along omega and write the frame array to an image
+        	write_image('slice.png', np.amax(frame_list, axis=0), vmin=0)
         # Split the frame array into chunks for multiprocessing
-        num_cores = multiprocessing.cpu_count()
+        num_cores = cfg.multiprocessing
         frame_list_split = np.array_split(frame_list, num_cores, axis=0)
         ge_data_ang_red = ()
         omega_start.append(0)
@@ -258,7 +253,7 @@ class GEPreProcessor:
         min_peak_separation = self.min_peak_separation
         omega_start         = self.omega_start
 
-        num_cores = multiprocessing.cpu_count()
+        num_cores = cfg.multiprocessing
         logger.info("Starting spot finding with %d cores", num_cores)
         blobs_mp_output = Parallel(n_jobs=num_cores, verbose=5, max_nbytes=1e6)(delayed(find_blobs_mp)(ge_data, int_scale_factor, min_size, min_peak_separation, cfg) for ge_data in ge_data_ang_red)
 
@@ -267,7 +262,6 @@ class GEPreProcessor:
         blobs = []
         label_ge = []
         blob_centroids_oxy = []
-        #local_maxima_xy = []
         local_maxima_oxy = []
         local_maxima_oxyi = []
         for blobs_mp_output_i, omega_start_i in zip(blobs_mp_output, omega_start):
@@ -276,7 +270,6 @@ class GEPreProcessor:
            #
            for maxima_o, maxima_x, maxima_y, max_intensity in blobs_mp_output_i['local_maxima']:
               if max_intensity > (0.05*float(2**14)):
-                 #local_maxima_xy.append([maxima_x, maxima_y])
                  local_maxima_oxyi.append([maxima_o + omega_start_i, maxima_x, maxima_y, max_intensity])
                  local_maxima_oxy.append([maxima_o + omega_start_i, maxima_x, maxima_y])
            #
@@ -299,13 +292,9 @@ class GEPreProcessor:
         local_maxima_oxyi_clustered = zip(np.divide(o_sum, l_sum), np.divide(x_sum, l_sum), np.divide(y_sum, l_sum), np.divide(i_sum, l_sum))
         local_maxima_xy = zip(np.divide(x_sum, l_sum), np.divide(y_sum, l_sum))
 
-        #print 'Local maxima'
-        #for l1, l2 in zip(local_maxima_labels, local_maxima_oxyi):
-        #   print l1, l2[0], l2[1], l2[2], l2[3]
-
         blob_centroids = []
         for blob in blobs:
-           if blob.blob_size > 125:
+           if blob.blob_size > cfg.get('pre_processing')['min_blob_size']:
               blob_centroids.append([(blob.slice_y.start + blob.slice_y.stop)/2.0, (blob.slice_z.start + blob.slice_z.stop)/2.0])
               blob_centroids_oxy.append([(blob.slice_x.start + blob.slice_x.stop)/2.0, (blob.slice_y.start + blob.slice_y.stop)/2.0, (blob.slice_z.start + blob.slice_z.stop)/2.0])
 
@@ -319,22 +308,34 @@ class GEPreProcessor:
         logger.info("Found %d connected components", len(blobs))
         logger.info("Found %d spots", np.shape(local_maxima_oxyi)[0])
 
-        logger.info("Writing diagnostic images and output GE2 files")
-        # Superimpose the centroids of blobs and the local maxima on the original data 
-        # and write to an image file.
-        write_image('slice_blob_centroids.png', np.amax(self.ge_data, axis=0), pts=blob_centroids)
-        write_image('slice_local_maxima.png', np.amax(self.ge_data, axis=0), pts=local_maxima_xy)
+	if cfg.get('pre_processing')['print_diag_images']:
+        	logger.info("Writing diagnostic images")
+        	# Superimpose the centroids of blobs and the local maxima on the original data 
+        	# and write to an image file.
+       		write_image('slice_blob_centroids.png', np.amax(self.ge_data, axis=0), pts=blob_centroids)
+        	write_image('slice_local_maxima.png', np.amax(self.ge_data, axis=0), pts=local_maxima_xy)
 
-        # Synthesize a GE2 file based on the IDed spots
-        frames_synth = np.zeros(self.input_data_shape)
-        for o, x, y, i in local_maxima_oxyi_clustered:
-           frames_synth[int(round(o)), int(round(x)), int(round(y))] = i
+        if(cfg.get('pre_processing')['print_spots_info']):
+           # Because I want to pretty print columns
+           template = "{0:>12}{1:>12}{2:>12}{3:>12}"
+           print template.format("Omega", "X", "Y", "Intensity")
 
-        frames_synth = ndimage.morphology.grey_dilation(frames_synth, size=2)
-        write_ge2('synth_spots.ge2', frames_synth)
+           template = "{0:12.2f}{1:12.2f}{2:12.2f}{3:12.3f}"
+           for o, x, y, i in local_maxima_oxyi_clustered:
+              print template.format(o, x, y, i)
 
-        #print 'Total blobs: ', len(blobs)
-        #print 'Total local maxima: ', np.shape(local_maxima_oxyi)[0]
+        if cfg.get('pre_processing')['print_ge']:
+           logger.info("Writing GE2 files")
+           # Synthesize a GE2 file based on the IDed spots
+           frames_synth = np.zeros(self.input_data_shape)
+           for o, x, y, i in local_maxima_oxyi_clustered:
+              frames_synth[int(round(o)), int(round(x)), int(round(y))] = i
+
+           frames_synth = ndimage.morphology.grey_dilation(frames_synth, size=2)
+           write_ge2('synth_spots.ge2', frames_synth)
+        else:
+           logger.info("Skipped writing GE2 files")
+
         return label_ge
     #--
 
@@ -353,7 +354,7 @@ class GEPreProcessor:
 
         logger.info("Detecting local maxima")
 
-        num_cores = multiprocessing.cpu_count()
+        num_cores = cfg.multiprocessing
         spot_max_points = Parallel(n_jobs=num_cores, verbose=5)(delayed(get_local_maxima)(blob, ge_data, min_peak_separation, cfg, int_scale_factor) for blob, ge_data in zip(blobs, ge_data_ang_red))
 
         for pt, layer_num in zip(spot_max_points, range(num_cores)):

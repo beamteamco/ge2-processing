@@ -324,6 +324,7 @@ class GEPreProcessor:
 	   f.write(template_file.format("Omega", "X", "Y", "Intensity"))
 
            template = "{0:12.2f}{1:12.2f}{2:12.2f}{3:12.3f}"
+           template_file = "{0:12.2f}{1:12.2f}{2:12.2f}{3:12.3f}\n"
            for o, x, y, i in local_maxima_oxyi_clustered:
               print template.format(o, x, y, i)
 	      f.write(template_file.format(o, x, y, i))

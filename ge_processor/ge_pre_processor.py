@@ -269,7 +269,7 @@ class GEPreProcessor:
               blobs.append(blob_i)
            #
            for maxima_o, maxima_x, maxima_y, max_intensity in blobs_mp_output_i['local_maxima']:
-              if max_intensity > (cfg.get('pre_processing')['ge_reader_threshold']):
+              if max_intensity > (cfg.get('pre_processing')['min_peak_intensity']):
                  local_maxima_oxyi.append([maxima_o + omega_start_i, maxima_x, maxima_y, max_intensity])
                  local_maxima_oxy.append([maxima_o + omega_start_i, maxima_x, maxima_y])
            #

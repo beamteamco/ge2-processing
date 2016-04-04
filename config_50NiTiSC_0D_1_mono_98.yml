@@ -5,7 +5,7 @@ analysis_name: 50NiTiSC_0D_1_mono_98_redo_thresh1 # defaults to analysis
 ## any files not in working_dir should be specified with an absolute path
 #working_dir: 
 
-multiprocessing: -1 # "all", or "half", or -1 means all but one, defaults to -1
+multiprocessing: half # "all", or "half", or -1 means all but one, defaults to -1
 
 material:
   definitions: material_niti
@@ -42,7 +42,7 @@ pre_processing:
   print_spots_info: true   # Print omega, x, y and intensity for the local maxima found
   print_ge: false          # If true, GE2 files will be written to disk (pretty slow for now)
   print_diag_images: false # Print diagnosti PNGs with local maxima overlaid on intensity etc
-  radius_gray_dilation: 2  # When writing GE2 files, spot will be dilated by these pixels
+  radius_grey_dilation: 2  # When writing GE2 files, spot will be dilated by these pixels
 
 find_orientations:
   orientation_maps:

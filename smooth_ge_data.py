@@ -13,10 +13,10 @@ from ge_processor.ge_pre_processor import *
 if __name__ == '__main__':
     # Read args
     if len(sys.argv) < 2:
-        print 'USAGE: python load_data.py config.yml'
+        print 'USAGE: python smooth_ge_data.py config.yml'
         sys.exit(1)
     elif sys.argv[1] == '-h' or sys.argv[1] == '--help':
-        print 'USAGE: python load_data.py config.yml'
+        print 'USAGE: python smooth_ge_data.py config.yml'
         sys.exit(1)
     else:
         cfg_file = sys.argv[1]

@@ -269,7 +269,7 @@ class GEPreProcessor:
               blobs.append(blob_i)
            #
            for maxima_o, maxima_x, maxima_y, max_intensity in blobs_mp_output_i['local_maxima']:
-              if max_intensity > (0.05*float(2**14)):
+              if max_intensity > (cfg.get('pre_processing')['ge_reader_threshold']):
                  local_maxima_oxyi.append([maxima_o + omega_start_i, maxima_x, maxima_y, max_intensity])
                  local_maxima_oxy.append([maxima_o + omega_start_i, maxima_x, maxima_y])
            #
@@ -337,7 +337,7 @@ class GEPreProcessor:
            for o, x, y, i in local_maxima_oxyi_clustered:
               frames_synth[int(round(o)), int(round(x)), int(round(y))] = i
 
-           frames_synth = ndimage.morphology.grey_dilation(frames_synth, size=2)
+           frames_synth = ndimage.morphology.grey_dilation(frames_synth, size=cfg.get('pre_processing')['radius_grey_dilation'])
            write_ge2('synth_spots.ge2', frames_synth)
         else:
            logger.info("Skipped writing GE2 files")

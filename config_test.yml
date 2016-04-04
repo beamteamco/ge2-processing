@@ -39,7 +39,7 @@ pre_processing:
   ge_reader_threshold: 50  # Anything less than this will be set to zero on reading GE2 file
   min_blob_size: 10        # Blob containing less than these pixels will be discarded
   print_ge: false          # If true, GE2 files will be written to disk (pretty slow for now)
-  radius_gray_dilation: 2  # When writing GE2 files, spot will be dilated by these pixels
+  radius_grey_dilation: 2  # When writing GE2 files, spot will be dilated by these pixels
 
 find_orientations:
   orientation_maps:

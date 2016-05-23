@@ -39,11 +39,10 @@ pre_processing:
   ge_reader_threshold: 50  # Anything less than this will be set to zero on reading GE2 file
   min_blob_size: 125       # Blob containing less than these pixels will be discarded
   min_peak_separation: 5   # Minimum separation between local maxima
-  min_peak_intensity: 100  # Minimum intensity of a peak. This is applied after scaling max. intensity to 14000
   print_spots_info: true   # Print omega, x, y and intensity for the local maxima found
   print_ge: false          # If true, GE2 files will be written to disk (pretty slow for now)
   print_diag_images: false # Print diagnosti PNGs with local maxima overlaid on intensity etc
-  radius_grey_dilation: 2  # When writing GE2 files, spot will be dilated by these pixels
+  radius_gray_dilation: 2  # When writing GE2 files, spot will be dilated by these pixels
 
 find_orientations:
   orientation_maps:

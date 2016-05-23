@@ -27,7 +27,7 @@ from skimage.morphology import watershed
 from skimage.feature import peak_local_max
 # Clustering stuff
 from sklearn.cluster import DBSCAN
-# Parallelization for spped
+# Parallelization for speed
 from joblib import Parallel, delayed
 import multiprocessing
 from random import randint
@@ -91,6 +91,8 @@ def find_blobs_mp(ge_data, int_scale_factor, min_size, min_peak_separation, cfg)
    blobs = []
    blob_centroids = []
    max_points_global = []
+   roi_global = []
+   watershed_global = []
    for label_num, blob_size in zip(blob_labels, blob_sizes):
         # Label 0 is for the whole image background. Do not want.
         if label_num == 0:
@@ -116,7 +118,7 @@ def find_blobs_mp(ge_data, int_scale_factor, min_size, min_peak_separation, cfg)
         markers = np.zeros_like(roi)
         # Find local maxima
         max_points = peak_local_max(roi, min_distance=(min_peak_separation),
-                                    threshold_rel=0.05, exclude_border=False, indices=False)
+                                    threshold_rel=0.02, exclude_border=False, indices=False)
         max_points[roi < int_scale_factor*cfg.fit_grains.threshold] = 0
         max_points = np.nonzero(max_points)
         #
@@ -127,13 +129,17 @@ def find_blobs_mp(ge_data, int_scale_factor, min_size, min_peak_separation, cfg)
            max_points_global.append([max_x + slice_x.start, max_y + slice_y.start, max_z + slice_z.start, roi[max_x][max_y][max_z]])
         # Run watershed now
         labels = watershed(-roi, markers, mask=(roi>0.1*np.amax(roi)))
+        roi_global.append(roi)
+        watershed_global.append(labels)
+
         # Done watershed
+
         # This looks like a legit spot. Add to blobs array
         blobs.append(GEBlob(slice_x, slice_y, slice_z, label_num, blob_size, max_points))
 
    ge_labeled = np.amax(label_ge, 0)
 
-   return {'blobs': blobs, 'label_ge': label_ge, 'blob_centroids': blob_centroids, 'local_maxima': max_points_global}
+   return {'blobs': blobs, 'label_ge': label_ge, 'blob_centroids': blob_centroids, 'local_maxima': max_points_global, 'roi' : roi_global, 'watershed' : watershed_global}
 #--
 
 # A blob is a set of pixels in an image that are connected to each other
@@ -264,12 +270,19 @@ class GEPreProcessor:
         blob_centroids_oxy = []
         local_maxima_oxy = []
         local_maxima_oxyi = []
+        roi_counter = 0
         for blobs_mp_output_i, omega_start_i in zip(blobs_mp_output, omega_start):
            for blob_i in blobs_mp_output_i['blobs']:
               blobs.append(blob_i)
            #
+           for roi_i, watershed_i in zip(blobs_mp_output_i['roi'], blobs_mp_output_i['watershed']):
+              if cfg.get('pre_processing')['print_diag_images']:
+                 write_image('watershed' + str(roi_counter) + '.png', np.amax(watershed_i, axis=0), vmin=0)
+                 write_image('roi' + str(roi_counter) + '.png', np.amax(roi_i, axis=0), vmin=0)
+                 roi_counter += 1
+
            for maxima_o, maxima_x, maxima_y, max_intensity in blobs_mp_output_i['local_maxima']:
-              if max_intensity > (cfg.get('pre_processing')['min_peak_intensity']):
+              if max_intensity > (cfg.get('pre_processing')['ge_reader_threshold']):
                  local_maxima_oxyi.append([maxima_o + omega_start_i, maxima_x, maxima_y, max_intensity])
                  local_maxima_oxy.append([maxima_o + omega_start_i, maxima_x, maxima_y])
            #
@@ -338,7 +351,7 @@ class GEPreProcessor:
            for o, x, y, i in local_maxima_oxyi_clustered:
               frames_synth[int(round(o)), int(round(x)), int(round(y))] = i
 
-           frames_synth = ndimage.morphology.grey_dilation(frames_synth, size=cfg.get('pre_processing')['radius_grey_dilation'])
+           frames_synth = ndimage.morphology.gray_dilation(frames_synth, size=cfg.get('pre_processing')['radius_gray_dilation'])
            write_ge2('synth_spots.ge2', frames_synth)
         else:
            logger.info("Skipped writing GE2 files")

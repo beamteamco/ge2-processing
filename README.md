@@ -6,7 +6,9 @@ Currently spot IDing and cleaning is implemented.
 To run on W315 workstation:
 `python smooth_ge_data.py config.yml` OR `ge-spot-cleanup config.yml`
 
-To run on Stampede
+To run on Stampede:
+Create a job file (e.g. `spot_cleanup.job`) and submit it with sbatch
+
 	#!/bin/bash
 
 	#SBATCH -J spot_cleanup          # Job name

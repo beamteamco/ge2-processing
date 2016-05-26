@@ -133,17 +133,21 @@ def find_blobs_mp(ge_data, int_scale_factor, min_size, min_peak_separation, cfg)
         labels = watershed(-roi, markers, mask=(roi>0.1*np.amax(roi)))
         roi_global.append(roi)
         watershed_global.append(labels)
-
+        # Get spot size and shape
         for max_x, max_y, max_z, max_id in zip(max_points[0], max_points[1], max_points[2],
                                                range(len(max_points[0]))):
-              watershed_pixel_count.append(np.sum(labels == max_id+1))
-
-              try:
-                 U, S, V = np.linalg.svd(np.transpose(np.nonzero(labels == max_id+1)), compute_uv=True)
-                 watershed_eigs.append(S**2/((labels == max_id+1).size - 1))
-              except:
-                 print 'Something went wrong with PCA. Setting eigenvalues to 0.'
-                 watershed_eigs.append([0., 0., 0.])
+           # Size = number of voxels with same watershed label
+           watershed_pixel_count.append(np.sum(labels == max_id+1))
+           # Shape = three eigenvalues (calculated using SVD)
+           try:
+              # The indices must be centered around the mean
+              roi_pt_indices = np.transpose(np.nonzero(labels == max_id+1))
+              roi_pt_indices = roi_pt_indices - np.mean(roi_pt_indices, axis=0)
+              U, S, V = np.linalg.svd(roi_pt_indices, compute_uv=True)
+              watershed_eigs.append(S**2/((labels == max_id+1).size - 1))
+           except:
+              print 'Something went wrong with PCA. Setting eigenvalues to 0.'
+              watershed_eigs.append([0., 0., 0.])
 
         # Done watershed
 

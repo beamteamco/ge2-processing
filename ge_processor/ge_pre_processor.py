@@ -145,7 +145,12 @@ def find_blobs_mp(ge_data, int_scale_factor, min_size, min_peak_separation, cfg)
               roi_pt_indices = np.transpose(np.nonzero(labels == max_id+1))
               roi_pt_indices = roi_pt_indices - np.mean(roi_pt_indices, axis=0)
               U, S, V = np.linalg.svd(roi_pt_indices, compute_uv=True)
-              watershed_eigs.append(S**2/((labels == max_id+1).size - 1))
+              #watershed_eigs.append(S**2/((labels == max_id+1).size - 1))
+              # Instead of using the eigenvalues, which are shorter than axes lengths
+              # for discrete point clouds, take the lenght of each axis as the largest
+              # projection from a point in the point cloud to the eigenvector for that
+              # axis
+              watershed_eigs.append(np.max(np.dot(roi_pt_indices, V), axis=0))
            except:
               print 'Something went wrong with PCA. Setting eigenvalues to 0.'
               watershed_eigs.append([0., 0., 0.])

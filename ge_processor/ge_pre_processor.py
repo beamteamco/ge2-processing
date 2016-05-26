@@ -18,6 +18,7 @@ from scipy.ndimage.filters import gaussian_filter
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     import matplotlib
+    matplotlib.use('Agg')
     from matplotlib import pyplot as plt
 # hexrd helpers to read a config file and load GE2 data
 from hexrd import config

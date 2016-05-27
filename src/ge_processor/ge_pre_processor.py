@@ -405,7 +405,7 @@ class GEPreProcessor:
               frames_synth[int(round(o)), int(round(x)), int(round(y))] = i
 
            frames_synth = ndimage.morphology.gray_dilation(frames_synth, size=cfg.get('pre_processing')['radius_gray_dilation'])
-           write_ge2('synth_spots.ge2', frames_synth)
+           write_ge2(cfg.get('analysis_name') + '_synth_spots.ge2', frames_synth)
         else:
            logger.info("Skipped writing GE2 files")
 

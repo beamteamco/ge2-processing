@@ -404,7 +404,10 @@ class GEPreProcessor:
            for o, x, y, i in local_maxima_oxyi_clustered:
               frames_synth[int(round(o)), int(round(x)), int(round(y))] = i
 
-           frames_synth = ndimage.morphology.gray_dilation(frames_synth, size=cfg.get('pre_processing')['radius_gray_dilation'])
+           grey_dilation_size = (cfg.get('pre_processing')['radius_gray_dilation_omega'],
+				 cfg.get('pre_processing')['radius_gray_dilation_x'],
+				 cfg.get('pre_processing')['radius_gray_dilation_y'])
+           frames_synth = ndimage.morphology.grey_dilation(frames_synth, size=grey_dilation_size)
            write_ge2(cfg.get('analysis_name') + '_synth_spots.ge2', frames_synth)
         else:
            logger.info("Skipped writing GE2 files")

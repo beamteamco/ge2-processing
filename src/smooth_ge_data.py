@@ -31,15 +31,16 @@ if __name__ == '__main__':
     ch.setFormatter(cf)
     logger.addHandler(ch)
     # load the configuration settings
-    cfg = config.open(cfg_file)
-    # cfg is a list. We only need the first cfg data.
-    cfg = cfg[0]
-    # Initialize the GE pre-processor
-    gepp = GEPreProcessor(cfg=cfg, logger=logger)
-    # Start analysis
-    logger.info('=== begin image-smoothing ===')
-    # Load the GE2 data
-    gepp.load_data()
-    # ID blobs and the local maxima
-    gepp.find_blobs()
+    cfgs = config.open(cfg_file)
+    # cfg is a list. We will loop over each cfg set.
+
+    for cfg in cfgs:
+    	# Initialize the GE pre-processor
+    	gepp = GEPreProcessor(cfg=cfg, logger=logger)
+    	# Start analysis
+    	logger.info('=== begin image-smoothing ===')
+    	# Load the GE2 data
+    	gepp.load_data()
+    	# ID blobs and the local maxima
+    	gepp.find_blobs()
 

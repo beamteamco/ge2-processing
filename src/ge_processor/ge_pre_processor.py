@@ -96,6 +96,7 @@ def find_blobs_mp(ge_data, int_scale_factor, min_size, min_peak_separation, cfg)
    watershed_global = []
    watershed_pixel_count = []
    watershed_eigs = []
+   watershed_eigv = []
    for label_num, blob_size in zip(blob_labels, blob_sizes):
         # Label 0 is for the whole image background. Do not want.
         if label_num == 0:
@@ -151,9 +152,11 @@ def find_blobs_mp(ge_data, int_scale_factor, min_size, min_peak_separation, cfg)
               # projection from a point in the point cloud to the eigenvector for that
               # axis
               watershed_eigs.append(np.max(np.dot(roi_pt_indices, V), axis=0))
+              watershed_eigv.append(np.reshape(V, 9))
            except:
               print 'Something went wrong with PCA. Setting eigenvalues to 0.'
               watershed_eigs.append([0., 0., 0.])
+	      watershed_eigv.append([0., 0., 0., 0., 0., 0., 0., 0., 0.])
 
         # Done watershed
 
@@ -169,7 +172,8 @@ def find_blobs_mp(ge_data, int_scale_factor, min_size, min_peak_separation, cfg)
            'roi' : roi_global, 
            'watershed' : watershed_global,
            'watershed_pixel_count': watershed_pixel_count,
-           'watershed_eigs': watershed_eigs}
+           'watershed_eigs': watershed_eigs,
+	   'watershed_eigv': watershed_eigv}
 #--
 
 # A blob is a set of pixels in an image that are connected to each other
@@ -302,6 +306,7 @@ class GEPreProcessor:
         local_maxima_oxyi = []
         spot_sizes = []
         spot_shapes = []
+        spot_axes = []
         roi_counter = 0
         for blobs_mp_output_i, omega_start_i in zip(blobs_mp_output, omega_start):
            for blob_i in blobs_mp_output_i['blobs']:
@@ -314,7 +319,7 @@ class GEPreProcessor:
                  write_image('roi' + str(roi_counter) + '.png', np.amax(roi_i, axis=0), vmin=0)
                  roi_counter += 1
               
-           for maxima_info, spot_size_i, spot_eigs_i in zip(blobs_mp_output_i['local_maxima'], blobs_mp_output_i['watershed_pixel_count'], blobs_mp_output_i['watershed_eigs']):
+           for maxima_info, spot_size_i, spot_eigs_i, spot_eigv_i in zip(blobs_mp_output_i['local_maxima'], blobs_mp_output_i['watershed_pixel_count'], blobs_mp_output_i['watershed_eigs'], blobs_mp_output_i['watershed_eigv']):
               maxima_o, maxima_x, maxima_y, max_intensity = maxima_info
               if max_intensity > (cfg.get('pre_processing')['ge_reader_threshold']):
                  local_maxima_oxyi.append([maxima_o + omega_start_i, maxima_x, maxima_y, max_intensity])
@@ -322,9 +327,11 @@ class GEPreProcessor:
                  spot_sizes.append(spot_size_i)
                  try:
                     spot_shapes.append([spot_eigs_i[0], spot_eigs_i[1], spot_eigs_i[2]])
+		    spot_axes.append(spot_eigv_i)
                  except:
                     print 'Eig shape not correct'
                     spot_shapes.append([0., 0., 0.])
+		    spot_axes.append([0., 0., 0., 0., 0., 0., 0., 0., 0.])
 
            #
            label_ge.append(blobs_mp_output_i['label_ge'])
@@ -344,10 +351,22 @@ class GEPreProcessor:
         spot_sizes_sum = np.bincount(local_maxima_labels, weights=spot_sizes)
 
         spot_shapes = np.array(spot_shapes)
+	spot_axes = np.array(spot_axes)
 
         spot_shapes_sum = zip(np.bincount(local_maxima_labels, weights=spot_shapes[:, 0]), 
                               np.bincount(local_maxima_labels, weights=spot_shapes[:, 1]),
                               np.bincount(local_maxima_labels, weights=spot_shapes[:, 2]))
+
+        spot_axes_sum = zip(np.bincount(local_maxima_labels, weights=spot_axes[:, 0]),
+                            np.bincount(local_maxima_labels, weights=spot_axes[:, 1]),
+                            np.bincount(local_maxima_labels, weights=spot_axes[:, 2]),
+			    np.bincount(local_maxima_labels, weights=spot_axes[:, 3]),
+                            np.bincount(local_maxima_labels, weights=spot_axes[:, 4]),
+                            np.bincount(local_maxima_labels, weights=spot_axes[:, 5]),
+                            np.bincount(local_maxima_labels, weights=spot_axes[:, 6]),
+                            np.bincount(local_maxima_labels, weights=spot_axes[:, 7]),
+                            np.bincount(local_maxima_labels, weights=spot_axes[:, 8]))
+
         l_sum = np.bincount(local_maxima_labels)
         #
         local_maxima_oxyi_clustered = zip(np.divide(o_sum, l_sum), np.divide(x_sum, l_sum), np.divide(y_sum, l_sum), np.divide(i_sum, l_sum))
@@ -355,6 +374,7 @@ class GEPreProcessor:
 
         spot_sizes_clustered = np.divide(spot_sizes_sum, l_sum)
         spot_shapes_clustered = np.divide(spot_shapes_sum, zip(l_sum, l_sum, l_sum))
+        spot_axes_clustered = np.divide(spot_axes_sum, zip(l_sum, l_sum, l_sum, l_sum, l_sum, l_sum, l_sum, l_sum, l_sum))
 
         blob_centroids = []
         for blob in blobs:
@@ -383,17 +403,19 @@ class GEPreProcessor:
         if(cfg.get('pre_processing')['print_spots_info']):
 	   f = open(cfg.get('analysis_name') +'_spots.data', 'w+')
            # Because I want to pretty print columns
-           template = "{0:>12}{1:>12}{2:>12}{3:>12}{4:>12}{5:>12}{6:>12}{7:>12}"
-           template_file = "{0:>12}{1:>12}{2:>12}{3:>12}{4:>12}{5:>12}{6:>12}{7:>12}\n"
-           print template.format("Omega", "X", "Y", "Intensity", "Size", "Eig 1", "Eig 2", "Eig 3")
-	   f.write(template_file.format("Omega", "X", "Y", "Intensity", "Size", "Eig 1", "Eig 2", "Eig 3"))
+           template = "{0:>12}{1:>12}{2:>12}{3:>12}{4:>12}{5:>12}{6:>12}{7:>12}{8:>12}{9:>12}{10:>12}{11:>12}{12:>12}{13:>12}{14:>12}{15:>12}{16:>12}"
+           template_file = "{0:>12}{1:>12}{2:>12}{3:>12}{4:>12}{5:>12}{6:>12}{7:>12}{8:>12}{9:>12}{10:>12}{11:>12}{12:>12}{13:>12}{14:>12}{15:>12}{16:>12}\n"
+           print template.format("Omega", "X", "Y", "Intensity", "Size", "Eig 1", "Eig 2", "Eig 3", "Eigv 1", "Eigv 2", "Eigv 3", "Eigv 4", "Eigv 5", "Eigv 6", "Eigv 7", "Eigv 8", "Eigv 9")
+	   f.write(template_file.format("Omega", "X", "Y", "Intensity", "Size", "Eig 1", "Eig 2", "Eig 3", "Eigv 1", "Eigv 2", "Eigv 3", "Eigv 4", "Eigv 5", "Eigv 6", "Eigv 7", "Eigv 8", "Eigv 9"))
 
-           template = "{0:12.2f}{1:12.2f}{2:12.2f}{3:12.3f}{4:12.3f}{5:12.3f}{6:12.3f}{7:12.3f}"
-           template_file = "{0:12.2f}{1:12.2f}{2:12.2f}{3:12.3f}{4:12.3f}{5:12.3f}{6:12.3f}{7:12.3f}\n"
-           for clustered_maxima_info, spot_size, spot_shape in zip(local_maxima_oxyi_clustered, spot_sizes_clustered, spot_shapes_clustered):
+           template = "{0:12.2f}{1:12.2f}{2:12.2f}{3:12.3f}{4:12.3f}{5:12.3f}{6:12.3f}{7:12.3f}{8:12.3f}{9:12.3f}{10:12.3f}{11:12.3f}{12:12.3f}{13:12.3f}{14:12.3f}{15:12.3f}{16:12.3f}"
+           template_file = "{0:12.2f}{1:12.2f}{2:12.2f}{3:12.3f}{4:12.3f}{5:12.3f}{6:12.3f}{7:12.3f}{8:12.3f}{9:12.3f}{10:12.3f}{11:12.3f}{12:12.3f}{13:12.3f}{14:12.3f}{15:12.3f}{16:12.3f}\n"
+           for clustered_maxima_info, spot_size, spot_shape, spot_axes in zip(local_maxima_oxyi_clustered, spot_sizes_clustered, spot_shapes_clustered, spot_axes_clustered):
               o, x, y, i = clustered_maxima_info
-              print template.format(o, x, y, i, spot_size, spot_shape[0], spot_shape[1], spot_shape[2])
-	      f.write(template_file.format(o, x, y, i, spot_size, spot_shape[0], spot_shape[1], spot_shape[2]))
+              print template.format(o, x, y, i, spot_size, spot_shape[0], spot_shape[1], spot_shape[2], 
+				    spot_axes[0], spot_axes[1], spot_axes[2], spot_axes[3], spot_axes[4], spot_axes[5], spot_axes[6], spot_axes[7], spot_axes[8])
+	      f.write(template_file.format(o, x, y, i, spot_size, spot_shape[0], spot_shape[1], spot_shape[2],
+					   spot_axes[0], spot_axes[1], spot_axes[2], spot_axes[3], spot_axes[4], spot_axes[5], spot_axes[6], spot_axes[7], spot_axes[8]))
 
 	   f.close()
 
